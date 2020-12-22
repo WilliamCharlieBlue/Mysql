@@ -313,9 +313,83 @@ ORDER BY P.product_type,SP.shop_id,SP.shop_name;
 | 衣服         | 000C    | 大阪      |      4000 |
 | 衣服         | 000D    | 福冈      |      1000 |
 +--------------+---------+-----------+-----------+
+
+-- 每类商品中售价最高的商品都在哪些商店有售?
+-- 这个貌似还是不对
+SELECT P.product_type, SP.shop_id, SP.shop_name, P.max_price
+FROM shopproduct AS SP 
+     INNER JOIN 
+     ( SELECT P1.product_type,P1.product_id, P1.product_name,P2.max_price
+         FROM product AS P1
+            INNER JOIN 
+            (SELECT product_type,MAX(sale_price) AS max_price 
+                   FROM product GROUP BY product_type) AS P2  
+                   ON P1.product_type = P2.product_type ) AS P
+ON SP.product_id = P.product_id
+GROUP BY P.product_type,SP.shop_id,SP.shop_name
+ORDER BY P.product_type,SP.shop_id,SP.shop_name;
++--------------+---------+-----------+-----------+
+| product_type | shop_id | shop_name | max_price |
++--------------+---------+-----------+-----------+
+| 办公用品     | 000A    | 东京      |       500 |
+| 办公用品     | 000B    | 名古屋    |       500 |
+| 厨房用具     | 000B    | 名古屋    |      6800 |
+| 厨房用具     | 000C    | 大阪      |      6800 |
+| 衣服         | 000A    | 东京      |      4000 |
+| 衣服         | 000B    | 名古屋    |      4000 |
+| 衣服         | 000C    | 大阪      |      4000 |
+| 衣服         | 000D    | 福冈      |      4000 |
++--------------+---------+-----------+-----------+
+
+-- 还是失败了
+SELECT P.product_type, SP.shop_id, SP.shop_name, P.max_price
+FROM shopproduct AS SP 
+     INNER JOIN 
+     ( SELECT P1.product_type,P1.product_id, P1.product_name,P2.max_price
+         FROM product AS P1
+            INNER JOIN 
+            (SELECT product_type,product_id,MAX(sale_price) AS max_price 
+                   FROM product 
+                   WHERE sale_price = MAX(sale_price) AS max_price 
+                   GROUP BY product_type,product_id) AS P2  
+                   ON P1.product_type = P2.product_type 
+                    ) AS P
+ON SP.product_id = P.product_id
+GROUP BY P.product_type,SP.shop_id,SP.shop_name
+ORDER BY P.product_type,SP.shop_id,SP.shop_name;
+```
+
+#### 5.2.1.4 内连结 与 关联子查询
+
+```mysql
+-- 关联子查询中的问题：找出每个商品种类当中售价高于该类商品的平均售价的商品
+SELECT product_type, product_name, sale_price
+FROM product AS P1
+WHERE sale_price > (SELECT AVG(sale_price)
+                       FROM product AS P2
+                      WHERE P1.product_type = P2.product_type
+                      GROUP BY product_type);
+-- 使用内连结来实现
+SELECT  P1.product_id,P1.product_name,P1.product_type,P1.sale_price
+       ,P2.avg_price
+FROM product AS P1 
+     INNER JOIN 
+    (SELECT product_type,AVG(sale_price) AS avg_price 
+      FROM product 
+     GROUP BY product_type) AS P2 
+ON P1.product_type = P2.product_type
+WHERE P1.sale_price > P2.avg_price;
+
 ```
 
 
+
+#### 5.2.3 SELF JOIN 自连结
+
+```
+-- 自连结自成一派的连结方法，而不是和第三种连结方案
+-- 自连结可以是内连结也可以是外连结
+```
 
 
 
