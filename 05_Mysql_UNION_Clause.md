@@ -294,7 +294,7 @@ ON SP.product_id = P.product_id
 GROUP BY SP.shop_id,SP.shop_name;
 
 -- 每类商品中售价最高的商品都在哪些商店有售?
--- 好像不太对的样子，最后一个 000D 的价格不对
+-- 好像不太对的样子，直接内连结，不好做筛选和排序，逻辑很混乱
 SELECT P.product_type, SP.shop_id, SP.shop_name, MAX(P.sale_price) AS max_price
 FROM shopproduct AS SP INNER JOIN product AS P
 ON SP.product_id = P.product_id
@@ -315,7 +315,7 @@ ORDER BY P.product_type,SP.shop_id,SP.shop_name;
 +--------------+---------+-----------+-----------+
 
 -- 每类商品中售价最高的商品都在哪些商店有售?
--- 这个貌似还是不对
+-- 这个貌似还是不对，两次内连结还是出了问题，缺少了筛选的步骤
 SELECT P.product_type, SP.shop_id, SP.shop_name, P.max_price
 FROM shopproduct AS SP 
      INNER JOIN 
@@ -324,7 +324,8 @@ FROM shopproduct AS SP
             INNER JOIN 
             (SELECT product_type,MAX(sale_price) AS max_price 
                    FROM product GROUP BY product_type) AS P2  
-                   ON P1.product_type = P2.product_type ) AS P
+                   ON P1.product_type = P2.product_type 
+             ) AS P
 ON SP.product_id = P.product_id
 GROUP BY P.product_type,SP.shop_id,SP.shop_name
 ORDER BY P.product_type,SP.shop_id,SP.shop_name;
@@ -341,22 +342,30 @@ ORDER BY P.product_type,SP.shop_id,SP.shop_name;
 | 衣服         | 000D    | 福冈      |      4000 |
 +--------------+---------+-----------+-----------+
 
--- 还是失败了
-SELECT P.product_type, SP.shop_id, SP.shop_name, P.max_price
+-- 每类商品中售价最高的商品都在哪些商店有售?
+-- 终于成功了
+SELECT P.product_type, P.product_name, SP.shop_id, SP.shop_name, P.sale_price
 FROM shopproduct AS SP 
-     INNER JOIN 
-     ( SELECT P1.product_type,P1.product_id, P1.product_name,P2.max_price
-         FROM product AS P1
-            INNER JOIN 
-            (SELECT product_type,product_id,MAX(sale_price) AS max_price 
-                   FROM product 
-                   WHERE sale_price = MAX(sale_price) AS max_price 
-                   GROUP BY product_type,product_id) AS P2  
-                   ON P1.product_type = P2.product_type 
-                    ) AS P
+     INNER JOIN
+     -- 使用关联子查询得到每一种商品种类的最高价格,派生出一个新表P 与SP进行内连结
+     (SELECT product_type, product_id, product_name, sale_price 
+     FROM product AS P1 
+     WHERE sale_price = (SELECT MAX(sale_price)                        
+                    FROM product AS P2                        
+                    WHERE P1.product_type = P2.product_type                       
+                    GROUP BY product_type)) AS P
 ON SP.product_id = P.product_id
-GROUP BY P.product_type,SP.shop_id,SP.shop_name
-ORDER BY P.product_type,SP.shop_id,SP.shop_name;
+ORDER BY P.product_type;
+-- 厨房用品中最高价的高压锅，这几家店都没有
++--------------+--------------+---------+-----------+------------+
+| product_type | product_name | shop_id | shop_name | sale_price |
++--------------+--------------+---------+-----------+------------+
+| 办公用品     | 打孔器       | 000A    | 东京      |        500 |
+| 办公用品     | 打孔器       | 000B    | 名古屋    |        500 |
+| 衣服         | 运动T恤      | 000A    | 东京      |       4000 |
+| 衣服         | 运动T恤      | 000B    | 名古屋    |       4000 |
+| 衣服         | 运动T恤      | 000C    | 大阪      |       4000 |
++--------------+--------------+---------+-----------+------------+
 ```
 
 #### 5.2.1.4 内连结 与 关联子查询
@@ -380,15 +389,317 @@ FROM product AS P1
 ON P1.product_type = P2.product_type
 WHERE P1.sale_price > P2.avg_price;
 
+-- 去掉内连结的子查询，虽然看起来层次更少，代码行数更少。但更难编写
+-- 往往需要耗费很长的时间，写一个虽然可能效率高，但晦涩难懂的代码，不太推荐
+SELECT  P1.product_id,P1.product_name,P1.product_type,P1.sale_price
+       ,AVG(P2.sale_price) AS avg_price
+FROM product AS P1 INNER JOIN product AS P2 
+ON P1.product_type=P2.product_type
+WHERE P1.sale_price > P2.sale_price
+GROUP BY P1.product_id,P1.product_name,P1.product_type,P1.sale_price,P2.product_type;
+```
+
+#### 5.2.1.5 NATURAL JOIN 自然连结
+
+```mysql
+-- 自然连结是内连结的一种特例
+-- 按照两个表中都包含的列名来进行等值内连结
+-- 比如shopproduct 和 product公共列是product_id，公共列放在第一列
+-- 可以有多个公共列，非公共列的依次罗列出来
+SELECT *  FROM shopproduct NATURAL JOIN product
+
+-- 使用基础的内连结实现
+SELECT P.product_id, SP.shop_id, SP.shop_name, SP.quantity,
+       P.product_name, P.product_type, P.sale_price,
+       P.purchase_price, P.regist_date
+FROM shopproduct AS SP INNER JOIN product AS P
+ON SP.product_id = P.product_id;
+
+-- 自然连结可以求出两张表或子查询的公共部分，解决INTERSECT问题
+-- 求表 product 和表 product2 中的公共部分？
+SELECT * FROM product NATURAL JOIN product2
+-- 但是连结只会返回连结条件为真的行，如果是NULL的话，不能用"="来判断
+-- 因此需要避开可能包含NULL的列
+SELECT * 
+FROM (SELECT product_id, product_name, product_type, sale_price FROM product ) AS A 
+      NATURAL JOIN 
+     (SELECT product_id, product_name, product_type, sale_price FROM product2) AS B;
+```
+
+#### 5.2.1.6 使用内连结求交集
+
+```mysql
+-- 如上一节内容，可以通过NATURAL JOIN求INTERSECT
+-- 关键在于公共列的等值判断
+-- 在INNER JOIN的ON子句中加入足够多的条件，也就能实现INTERSECT
+-- 但NULL的问题依旧存在，NULL不能用"="来判断，在ON语句中会判断为假，从而漏掉
+SELECT P1.*
+FROM product AS P1 INNER JOIN product2 AS P2
+ON (P1.product_id  = P2.product_id
+   AND P1.product_name = P2.product_name
+   AND P1.product_type = P2.product_type
+   AND P1.sale_price   = P2.sale_price
+   AND P1.regist_date  = P2.regist_date);
+
+-- 通过减少冗余，但包含NULL的条件，即可
+SELECT P1.*
+FROM product AS P1 INNER JOIN product2 AS P2
+ON P1.product_id = P2.product_id;
 ```
 
 
 
-#### 5.2.3 SELF JOIN 自连结
+### 5.2.3 OUTER JOIN 外连结
+
+```mysql
+-- 内连结会丢弃两张表中不满足ON条件的行
+-- 外连结有选择地保留无法匹配到的行
+	-- 左连结 保留左表中无法匹配地行，右表的行为缺失填充
+	-- 右连结 保留右表中无法匹配地行，左表的行为缺失填充
+	-- 全外连结 保留左右两表，对应的另一张表的行为缺失填充
+-- 左连结     
+FROM <tb_1> LEFT  OUTER JOIN <tb_2> ON <condition(s)>
+-- 右连结     
+FROM <tb_1> RIGHT OUTER JOIN <tb_2> ON <condition(s)>
+-- 全外连结
+FROM <tb_1> FULL  OUTER JOIN <tb_2> ON <condition(s)>
+```
+
+#### 5.2.3.1 左连结与右链接
+
+```
+-- 连结时可以交换左表和右表的位置, 左连结和右连结并没有本质区别
+-- 可以在表调换位置，同时左/右连结交换后，结果是一致的
+```
+
+#### 5.2.3.2 使用左连接获取信息
+
+```mysql
+-- product 表中有两种商品并未在内连结的结果里，说明商品未出售，有可能处于缺货状态
+-- 例如高压锅和圆珠笔
+SELECT SP.shop_id,SP.shop_name,
+       P.product_id, P.product_name,P.sale_price
+FROM product AS P
+LEFT OUTER JOIN shopproduct AS SP
+ON SP.product_id = P.product_id;
++---------+-----------+------------+--------------+------------+
+| shop_id | shop_name | product_id | product_name | sale_price |
++---------+-----------+------------+--------------+------------+
+| 000D    | 福冈      | 0001       | T恤          |       1000 |
+| 000A    | 东京      | 0001       | T恤          |       1000 |
+| 000B    | 名古屋    | 0002       | 打孔器       |        500 |
+| 000A    | 东京      | 0002       | 打孔器       |        500 |
+| 000C    | 大阪      | 0003       | 运动T恤      |       4000 |
+| 000B    | 名古屋    | 0003       | 运动T恤      |       4000 |
+| 000A    | 东京      | 0003       | 运动T恤      |       4000 |
+| 000C    | 大阪      | 0004       | 菜刀         |       3000 |
+| 000B    | 名古屋    | 0004       | 菜刀         |       3000 |
+| NULL    | NULL      | 0005       | 高压锅       |       6800 |
+| 000C    | 大阪      | 0006       | 叉子         |        500 |
+| 000B    | 名古屋    | 0006       | 叉子         |        500 |
+| 000C    | 大阪      | 0007       | 擦菜板       |        880 |
+| 000B    | 名古屋    | 0007       | 擦菜板       |        880 |
+| NULL    | NULL      | 0008       | 圆珠笔       |        100 |
++---------+-----------+------------+--------------+------------+
+```
+
+#### 5.2.3.3 外连结细节
+
+```
+-- 要点一：选出单张表中全部的信息
+	-- 不会内连结一样漏掉一些信息
+	-- 能生成生成固定行数的单据
+	
+-- 要点二：使用 LEFT、RIGHT 来指定主表
+	-- 指定的主表，最终结果将包含主表内的所有数据
+	-- LEFT和RIGHT只是指定的主表的位置不同，没有实质性的差别
+	-- 交换两个表的顺序, 同时将LEFT/RIGHT互换，结果完全相同
+```
+
+#### 5.2.3.4 左连结 搭配 WHERE
+
+```mysql
+-- WHERE进行筛选时，所使用的">=<"都对NULL无效
+-- 如果先进行外连结，再使用WHERE，会丢失包含NULL的条目
+-- 执行顺序FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY
+-- 想办法将WHERE在FROM OUTER JOIN之前实现，即使用子查询
+
+-- 先OUTER JION再WHERE，会忽略NULL
+SELECT P.product_id, P.product_name, P.sale_price,
+       SP.shop_id, SP.shop_name, SP.quantity
+FROM product AS P LEFT OUTER JOIN shopproduct AS SP ON SP.product_id = P.product_id
+WHERE quantity< 50
+
+-- 让WHERE先执行，再进行外连结，则可保留NULL信息
+SELECT P.product_id, P.product_name, P.sale_price,
+       SP.shop_id, SP.shop_name, SP.quantity
+FROM product AS P 
+	 LEFT OUTER JOIN 
+	 (SELECT * FROM shopproduct WHERE quantity< 50) AS SP 
+ON SP.product_id = P.product_id;
+```
+
+#### 5.2.3.4  MySQL 中不支持全外连结
+
+```
+-- 太遗憾了，又不支持
+-- 可以通过左连结和右连结的结果进行 UNION 来实现全外连结
+
+```
+
+
+
+### 5.2.4 SELF JOIN 自连结
 
 ```
 -- 自连结自成一派的连结方法，而不是和第三种连结方案
 -- 自连结可以是内连结也可以是外连结
+-- 见5.2.6.1
+```
+
+
+
+### 5.2.5 多表连结
+
+```
+-- 除了2张表的连结外，还可能出现3张表连结的情况
+-- 连结表的数量其实没有限制
+-- 现在有3张表，product, shopproduct, inventoryproduct
+```
+
+#### 5.2.5.1 多表进行内连结
+
+```mysql
+-- 直接在INNER JOIN后面再加INNER JOIN
+-- 对于ON的条件，不需要三连"=", 两个“=”已满足了三者均相等
+-- 对于4张、5张, INNER JOIN也是同样的添加方式
+SELECT SP.shop_id,SP.shop_name,SP.product_id,
+       P.product_name,P.sale_price,IP.inventory_quantity
+FROM product AS P
+     INNER JOIN shopproduct AS SP
+     ON P.product_id = SP.product_id
+     INNER JOIN Inventoryproduct AS IP
+     ON P.product_id = IP.product_id
+WHERE IP.inventory_id = 'P001';
+
+```
+
+#### 5.2.5.2 多表进行外连结
+
+```mysql
+-- 直接在OUTER JOIN后面再加OUTER JOIN
+-- 一般情况下，如果使用LEFT，就一直使用LEFT，可以保持主表的完整性
+SELECT SP.shop_id,SP.shop_name,SP.product_id,
+       P.product_name,P.sale_price,IP.inventory_quantity
+FROM product AS P
+     LEFT OUTER JOIN shopproduct AS SP
+     ON P.product_id = SP.product_id
+     LEFT OUTER JOIN Inventoryproduct AS IP
+     ON P.product_id = IP.product_id
+WHERE IP.inventory_id = 'P001';
+
+```
+
+
+
+### 5.2.6 ON 子句进阶–非等值连结
+
+```mysql
+-- ON子句中，除了使用相等判断的等值连结, 也可以使用比较运算符来进行连接
+-- 比较运算符(<,<=,>,>=, BETWEEN)和谓词运算(LIKE, IN, NOT 等等)在内的所有的逻辑运算
+```
+
+#### 5.2.6.1 SELF JOIN 非等值自左连结
+
+```mysql
+-- 使用非等值自左连结实现排名。
+-- 希望对 product 表中的商品按照售价赋予排名. 一个从集合论出发,使用自左连结的思路是, 对每一种商品,找出售价不低于它的所有商品, 然后对售价不低于它的商品使用 COUNT函数计数. 例如, 对于价格最高的商品
+
+-- 使用自左连结对每种商品找出价格不低于它的商品
+SELECT product_id, product_name, sale_price, COUNT(P2_id) AS rank
+FROM (SELECT P1.product_id, P1.product_name, P1.sale_price, P2.product_id AS P2_id,P2.product_name AS P2_name,P2.sale_price AS P2_price
+      FROM product AS P1 LEFT OUTER JOIN product AS P2 
+      ON P1.sale_price <= P2.sale_price) AS P
+GROUP BY product_id, product_name, sale_price
+ORDER BY rank; 
+
+-- 请按照商品的售价从低到高,对售价进行累计求和[注:这个案例缺少实际意义]
+-- 对每种商品使用自左连结, 找出比该商品售价价格更低或相等的商品
+-- 有两种商品的售价相同, 在使用 >= 进行连结时, 导致了累计求和错误
+-- 建立自左连结的本意, 是要找出满足:
+	-- 1.比该商品售价更低的
+	-- 2.该种商品自身
+	-- 3.如果 A 和 B 两种商品售价相等,则建立连结时, 如果 P1.A 和 P2.A,P2.B 建立了连接, 则 P1.B 不再和 P2.A 建立连结
+-- 优化：因此根据上述约束条件, 利用 ID 的有序性,
+SELECT	product_id, product_name, sale_price, SUM(P2_price) AS cum_price 
+FROM (SELECT  P1.product_id, P1.product_name, P1.sale_price
+                ,P2.product_id AS P2_id
+                ,P2.product_name AS P2_name
+                ,P2.sale_price AS P2_price 
+      FROM product AS P1 
+      LEFT OUTER JOIN product AS P2 
+      ON ((P1.sale_price > P2.sale_price) OR (P1.sale_price = P2.sale_price AND P1.product_id<=P2.product_id))
+	  ORDER BY P1.sale_price,P1.product_id) AS X
+GROUP BY product_id, product_name, sale_price
+ORDER BY sale_price,cum_price;
+```
+
+
+
+### 5.2.7 CROSS JOIN 交叉连结(笛卡尔积)
+
+```mysql
+-- 上述无论是外连结内连结, 一个共同的必备条件就是连结条件–ON 子句, 用来指定连结的条件
+-- 笛卡尔积, 就是使用集合 A 中的每一个元素与集合 B 中的每一个元素组成一个有序的组合
+-- 数据库表(或者子查询)的并,交和差都是在纵向上对表进行扩张或筛选限制等运算的, 这要求表的列数及对应位置的列的数据类型"相容", 因此这些运算并不会增加新的列
+-- 交叉连接(笛卡尔积)则是在横向上对表进行扩张, 即增加新的列, 与连结的功能是一致的
+	-- 因为没有了ON子句的限制, 会对左表和右表的每一行进行组合
+	-- 经常会导致很多无意义的行出现在检索结果中
+	-- 结果没有实用价值，其结果行数太多，需要花费大量的运算时间和高性能设备的支持
+
+-- 交叉连结的语法有如下两种形式:
+-- 结果为13 × 8 = 104 条记录
+-- 1.使用关键字 CROSS JOIN 显式地进行交叉连结
+SELECT SP.shop_id
+       ,SP.shop_name
+       ,SP.product_id
+       ,P.product_name
+       ,P.sale_price
+  FROM shopproduct AS SP
+ CROSS JOIN product AS P;
+-- 2.使用逗号分隔两个表,并省略 JOIN 子句
+SELECT SP.shop_id
+       ,SP.shop_name
+       ,SP.product_id
+       ,P.product_name
+       ,P.sale_price
+  FROM shopproduct AS SP , product AS P;
+```
+
+#### 5.2.7.1连结与笛卡儿积的关系
+
+```mysql
+-- 笛卡儿积可以视作一种特殊的连结
+-- 笛卡儿积的语法也可以写作(CROSS JOIN), 这种连结的ON子句是一个恒为真的谓词。
+-- 对笛卡儿积进行适当的限制之后, 也就得到了内连结和外连结
+
+-- 不做限制的笛卡尔积
+SELECT SP.*, P.*
+  FROM shopproduct AS SP 
+ CROSS JOIN product AS P;
+
+-- 对product_id进行限制后，得到内连结的结果
+SELECT SP.*, P.*
+  FROM shopproduct AS SP 
+ CROSS JOIN product AS P
+ WHERE SP.product_id = P.product_id;
+
+-- 内连结的过时语法 FROM里直接用","分隔，ON的功能全部在WHERE中实现
+-- 虽然结果与标准语法相同，所有的DBMS都能执行，但可读性差，已经不推荐了
+SELECT SP.shop_id,SP.shop_name,SP.product_id,P.product_name,P.sale_price
+  FROM shopproduct SP, product P
+ WHERE SP.product_id = P.product_id
+   AND SP.shop_id = '000A';
 ```
 
 
@@ -561,4 +872,71 @@ ON SP.product_id = P.product_id;
 ```
 
 
+
+```
+4.7 
+分别使用内连结和关联子查询每一类商品中售价最高的商品.
+```
+
+```mysql
+-- Answer:
+-- 使用关联子查询
+SELECT product_type, product_id, product_name, sale_price 
+FROM product AS P1 
+WHERE sale_price = (SELECT MAX(sale_price)                        
+                    FROM product AS P2                        
+                    WHERE P1.product_type = P2.product_type                       
+                    GROUP BY product_type);
+-- 使用内连结
+SELECT P1.product_type, P1.product_id, P1.product_name, P2.max_price
+FROM product AS P1 
+     INNER JOIN
+     (SELECT product_type, MAX(sale_price) AS max_price
+      FROM product 
+      GROUP BY product_type) AS P2
+ON P1.product_type = P2.product_type
+WHERE P1.sale_price = P2.max_price;
+```
+
+
+
+```mysql
+4.8 
+SELECT	product_id, product_name, sale_price, SUM(P2_price) AS cum_price 
+FROM (SELECT  P1.product_id, P1.product_name, P1.sale_price
+                ,P2.product_id AS P2_id
+                ,P2.product_name AS P2_name
+                ,P2.sale_price AS P2_price 
+      FROM product AS P1 
+      LEFT OUTER JOIN product AS P2 
+      ON ((P1.sale_price > P2.sale_price) OR (P1.sale_price = P2.sale_price AND P1.product_id<=P2.product_id))
+	  ORDER BY P1.sale_price,P1.product_id) AS X
+GROUP BY product_id, product_name, sale_price
+ORDER BY sale_price,cum_price;
+试将上述查询改用关联子查询实现.
++------------+--------------+------------+-----------+
+| product_id | product_name | sale_price | cum_price |
++------------+--------------+------------+-----------+
+| 0008       | 圆珠笔       |        100 |       100 |
+| 0006       | 叉子         |        500 |       600 |
+| 0002       | 打孔器       |        500 |      1100 |
+| 0007       | 擦菜板       |        880 |      1980 |
+| 0001       | T恤          |       1000 |      2980 |
+| 0004       | 菜刀         |       3000 |      5980 |
+| 0003       | 运动T恤      |       4000 |      9980 |
+| 0005       | 高压锅       |       6800 |     16780 |
++------------+--------------+------------+-----------+
+```
+
+```mysql
+-- Answer:
+SELECT	product_id, product_name, sale_price, 
+		(select SUM(sale_price) 
+         from product AS P2
+         where P1.sale_price > P2.sale_price
+         	OR ((P1.sale_price = P2.sale_price) AND (P1.product_id<=P2.product_id))
+        ) AS cum_price 
+FROM product AS P1
+ORDER BY sale_price;
+```
 
