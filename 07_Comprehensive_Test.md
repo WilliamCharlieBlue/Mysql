@@ -1,5 +1,15 @@
 # 07 Comprehensive Test
 
+## README
+
+```
+# 本章非原创，如有雷同，纯属正常[狗头保命]
+# 题目来自DATAWHALE准备的练习题
+# 解答大部分都来自互联网，但来源太广，且已重新整理，未注明出处，敬请谅解~
+```
+
+
+
 ## 练习一: 各部门工资最高的员工（难度：中等）
 
 ```
@@ -719,6 +729,70 @@ point_2d表包含一个平面内一些点（超过两个）的坐标值（x，y�
 ```
 
 ```mysql
+-- Answer
+CREATE TABLE point_2d(
+id INTEGER,
+x INTEGER,
+y INTEGER);
+
+INSERT INTO point_2d VALUES(1, -1, -1);
+INSERT INTO point_2d VALUES(2, 0, 0);
+INSERT INTO point_2d VALUES(3, -1, -2);
+
+-- 笛卡尔积，使用集合 A 中的每一个元素与集合 B 中的每一个元素组成一个有序的组合
+-- 但需要排除同一元素与自身的组合
+-- WHERE很重要，用于排除同一点继续冗余计算，从而得出距离为0的假结果
+-- 所以给每个点编一个id，是此方法的精髓
+-- 计算欧拉距离 SQRT((x1-x2)^2 + (y1-y2)^2)
+SELECT MIN(SQRT(POW((P1.x-P2.x), 2) + POW((P1.y-P2.y), 2))) AS 'shortest'
+FROM point_2d AS P1, point_2d AS P2
+WHERE P1.id <> P2.id;
+```
+
+
+
+## 练习十一：行程和用户（难度：困难）
+
+```
+Trips 表中存所有出租车的行程信息。每段行程有唯一键 Id，Client_Id 和 Driver_Id 是 Users 表中 Users_Id 的外键。Status 是枚举类型，枚举成员为 (‘completed’, ‘cancelled_by_driver’, ‘cancelled_by_client’)。
+
+Id	Client_Id	Driver_Id	City_Id	Status	Request_at
+1	1	10	1	completed	2013-10-1
+2	2	11	1	cancelled_by_driver	2013-10-1
+3	3	12	6	completed	2013-10-1
+4	4	13	6	cancelled_by_client	2013-10-1
+5	1	10	1	completed	2013-10-2
+6	2	11	6	completed	2013-10-2
+7	3	12	6	completed	2013-10-2
+8	2	12	12	completed	2013-10-3
+9	3	10	12	completed	2013-10-3
+10	4	13	12	cancelled_by_driver	2013-10-3
+Users 表存所有用户。每个用户有唯一键 Users_Id。Banned 表示这个用户是否被禁止，Role 则是一个表示（‘client’, ‘driver’, ‘partner’）的枚举类型。
+
++----------+--------+--------+
+| Users_Id | Banned |  Role  |
++----------+--------+--------+
+|    1     |   No   | client |
+|    2     |   Yes  | client |
+|    3     |   No   | client |
+|    4     |   No   | client |
+|    10    |   No   | driver |
+|    11    |   No   | driver |
+|    12    |   No   | driver |
+|    13    |   No   | driver |
++----------+--------+--------+
+写一段 SQL 语句查出2013年10月1日至2013年10月3日期间非禁止用户的取消率。基于上表，你的 SQL 语句应返回如下结果，取消率（Cancellation Rate）保留两位小数。
+
++------------+-------------------+
+|     Day    | Cancellation Rate |
++------------+-------------------+
+| 2013-10-01 |       0.33        |
+| 2013-10-02 |       0.00        |
+| 2013-10-03 |       0.50        |
++------------+-------------------+
+```
+
+```
 
 ```
 
