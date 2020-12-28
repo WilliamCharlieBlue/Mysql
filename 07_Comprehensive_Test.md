@@ -138,6 +138,385 @@ INSERT INTO seat VALUES(3, 'Emerson');
 INSERT INTO seat VALUES(4, 'Green');
 INSERT INTO seat VALUES(5, 'Jeames');
 
+-- 解题思路：id为偶数时减一，奇数时加一，最后的id为奇数时不变
+
+-- Solution1: 使用CASE实现
+SELECT (CASE
+    	-- 最大id是奇数的情况下，id不变
+    	WHEN S.id%2 = 1 AND S.id = S1.largest THEN S.id
+    	-- 奇数id加一
+        -- 因为是CASE，而不是IF判断，因此不会出现最大id再加一的情况
+    	WHEN S.id%2 = 1 THEN S.id + 1
+    	-- 偶数id减一
+    	ELSE S.id - 1
+    	END) AS id, S.student
+-- 从FROM子句中就可以把最大id计算出来了
+FROM seat AS S, (SELECT COUNT(id) AS largest FROM seat) AS S1
+ORDER BY id ASC;
+
+-- Solution2: 也可以使用IF实现
+-- IF(判断条件，真时返回值，假时返回值)
+-- 这里的第一个IF的假时返回值嵌套了另一个IF
+SELECT (
+    	IF
+        ( S.id%2 = 0, S.id-1, IF(S.id = S1.largest, S.id, S.id+1))
+       ) AS id, S.student
+FROM seat AS S, (SELECT COUNT(id) AS largest FROM seat) AS S1
+ORDER BY id ASC;
 
 ```
+
+
+
+## 练习三: 分数排名（难度：中等）
+
+```
+编写一个 SQL 查询来实现分数排名。如果两个分数相同，则两个分数排名（Rank）相同。请注意，平分后的下一个名次应该是下一个连续的整数值。换句话说，名次之间不应该有“间隔”。
+
+创建以下score表：
+
++----+-------+
+| Id | Score |
++----+-------+
+| 1  | 3.50  |
+| 2  | 3.65  |
+| 3  | 4.00  |
+| 4  | 3.85  |
+| 5  | 4.00  |
+| 6  | 3.65  |
++----+-------+
+例如，根据上述给定的 Scores 表，你的查询应该返回（按分数从高到低排列）：
+
++-------+------+
+| Score | Rank |
++-------+------+
+| 4.00  | 1    |
+| 4.00  | 1    |
+| 3.85  | 2    |
+| 3.65  | 3    |
+| 3.65  | 3    |
+| 3.50  | 4    |
++-------+------+
+```
+
+```mysql
+-- Answer:
+-- float(4,2) 表示：这个浮点数最大长度为4，也就是四位，小数部分为2位
+
+CREATE TABLE score (
+ id INTEGER NOT NULL,
+ Score FLOAT(4,2) NOT NULL,
+ PRIMARY KEY (id)
+ );
+ 
+INSERT INTO score VALUES(1, 3.50);
+INSERT INTO score VALUES(2, 3.65);
+INSERT INTO score VALUES(3, 4.00);
+INSERT INTO score VALUES(4, 3.85);
+INSERT INTO score VALUES(5, 4.00);
+INSERT INTO score VALUES(6, 3.65);
+
+-- 使用窗口专用函数DENSE_RANK,重复值同序，非重复值连续
+-- 在OVER条件中，使用降序排列
+SELECT Score, DENSE_RANK() OVER (ORDER BY Score DESC) AS 'RANK'
+FROM score;
+
+```
+
+
+
+## 练习四：连续出现的数字（难度：中等）
+
+```
+编写一个 SQL 查询，查找所有至少连续出现三次的数字。
+
++----+-----+
+| Id | Num |
++----+-----+
+| 1  |  1  |
+| 2  |  1  |
+| 3  |  1  |
+| 4  |  2  |
+| 5  |  1  |
+| 6  |  2  |
+| 7  |  2  |
++----+-----+
+例如，给定上面的 Logs 表， 1 是唯一连续出现至少三次的数字。
+
++-----------------+
+| ConsecutiveNums |
++-----------------+
+| 1               |
++-----------------+
+```
+
+```mysql
+-- Answer:
+CREATE TABLE number (
+ Id INTEGER NOT NULL,
+ Num INTEGER NOT NULL,
+ PRIMARY KEY (id)
+ );
+ 
+INSERT INTO number VALUES(1, 1);
+INSERT INTO number VALUES(2, 1);
+INSERT INTO number VALUES(3, 1);
+INSERT INTO number VALUES(4, 2);
+INSERT INTO number VALUES(5, 1);
+INSERT INTO number VALUES(6, 2);
+INSERT INTO number VALUES(7, 2);
+
+-- Solution1: 使用自连结，简单，但复杂度大，扩展性差
+-- 这里使用的是过时的连结语法，但本质一样，在自连结使用时，结构更清晰。
+-- 列出三个表格，第一个从ID1开始，第二个从ID2开始，第三个从ID3开始
+SELECT DISTINCT N1.Num AS ConsecutiveNums
+FROM number AS N1, number AS N2, number AS N3
+WHERE N2.Id = N1.Id +1 AND N3.Id = N2.Id + 1
+	  AND N2.Num = N1.Num AND N3.Num = N2.Num;
+
+-- Solution2: 自定义变量进行条件判断，只不过本课程好像没涉及到,较标准的函数思维
+-- 速度较Solution1快，且可以设置任何连续次数，用CNT来判断
+SELECT DISTINCT N.Num AS ConsecutiveNums, N.CNT
+FROM
+(SELECT Num,
+ 	(CASE
+ 		-- 如果和之前的值相等，@count变量加一
+ 		WHEN @prev = Num THEN @count := @count+1
+ 		-- 如果不相等，@count重新赋值为1
+ 		ELSE (@prev := Num) and (@count := 1)
+ 		END ) AS CNT
+ 		-- 初始化是0，进入CASE后，第一个如果不是0，@count将赋值为1
+ 	FROM number, (SELECT @prev := 0, @count := 0) AS T
+	
+) AS N
+WHERE N.CNT >=3;
+
+-- 本题若是连续次数为2，可如下设置，结果如下表
+-- WHERE N.CNT >=2;
++-----------------+------+
+| ConsecutiveNums | CNT  |
++-----------------+------+
+|               1 |    2 |
+|               1 |    3 |
+|               2 |    2 |
++-----------------+------+
+
+
+-- Solution3: 窗口函数，LAG
+-- 首先对Num进行了PARTITION BY, 对ID进行了ORDER BY
+-- LAG中offset是往前返回第offset行的值
+-- 如果没有第offset行，返回default_value；如果没有default_value返回NULL
+LAG(<expression>[,offset[, default_value]]) OVER (
+    PARTITION BY expr,...
+    ORDER BY expr [ASC|DESC],...
+) 
+-- 虽然看起来高端，但是有点费解
+
+SELECT DISTINCT N.Num AS ConsecutiveNums, N.id, N.prev
+FROM
+(	SELECT Num, Id, 
+ 		LAG(Id, 2) OVER (PARTITION BY Num ORDER BY Id) AS prev
+ 	FROM number
+ ) AS N
+ WHERE N.ID = N.prev + 2;
+
+-- 不指定WHERE和SELCET条件时是这样的情况
++-----+----+------+
+| Num | Id | prev |
++-----+----+------+
+|   1 |  1 | NULL |
+|   1 |  2 | NULL |
+|   1 |  3 |    1 |
+|   1 |  5 |    2 |
+|   2 |  4 | NULL |
+|   2 |  6 | NULL |
+|   2 |  7 |    4 |
++-----+----+------+
+```
+
+
+
+## 练习五：树节点 （难度：中等）
+
+```
+对于tree表，id是树节点的标识，p_id是其父节点的id。
+
++----+------+
+| id | p_id |
++----+------+
+| 1  | null |
+| 2  | 1    |
+| 3  | 1    |
+| 4  | 2    |
+| 5  | 2    |
++----+------+
+每个节点都是以下三种类型中的一种：
+
+Root: 如果节点是根节点。
+Leaf: 如果节点是叶子节点。
+Inner: 如果节点既不是根节点也不是叶子节点。
+写一条查询语句打印节点id及对应的节点类型。按照节点id排序。上面例子的对应结果为：
+
++----+------+
+| id | Type |
++----+------+
+| 1  | Root |
+| 2  | Inner|
+| 3  | Leaf |
+| 4  | Leaf |
+| 5  | Leaf |
++----+------+
+说明
+
+节点’1’是根节点，因为它的父节点为NULL，有’2’和’3’两个子节点。
+节点’2’是内部节点，因为它的父节点是’1’，有子节点’4’和’5’。
+节点’3’，‘4’，'5’是叶子节点，因为它们有父节点但没有子节点。
+下面是树的图形：
+
+    1         
+  /   \ 
+ 2    3    
+/ \
+4  5
+注意
+
+如果一个树只有一个节点，只需要输出根节点属性。
+```
+
+```mysql
+-- Answer:
+CREATE TABLE tree (
+ id INTEGER NOT NULL,
+ p_id INTEGER ,
+ PRIMARY KEY (id)
+ );
+ 
+INSERT INTO tree VALUES(1, NULL);
+INSERT INTO tree VALUES(2, 1);
+INSERT INTO tree VALUES(3, 1);
+INSERT INTO tree VALUES(4, 2);
+INSERT INTO tree VALUES(5, 2);
+
+-- Solution1: CASE判断，较标准的函数思维
+-- 结合NOT IN作为判断
+SELECT id, 
+	   (CASE
+        WHEN (SELECT count(*) FROM tree) = 1 THEN 'Root'
+        WHEN p_id is NULL THEN 'Root'
+        WHEN id NOT IN (SELECT DISTINCT T1.id
+                        FROM tree AS T1, tree AS T2
+                        WHERE T1.id = T2.p_id) THEN 'Leaf'
+        ELSE 'Inner'
+        END) AS Type
+FROM tree;
+
+
+
+
+-- Solution2: 左连结
+-- 核心在于T1.id = T2.p_id，用id去与p_id作为左连结条件
+-- 如果一个节点没有子节点的话，T2.id 和 T2.p_id都为NULL，这就是第二层IF的依据
+-- 同时由于IF中第一个判断的即是否为Root，因此不需要额外的判断了
+SELECT DISTINCT T1.id, 
+	IF(T1.p_id IS NULL, 'Root', 
+       IF(T2.p_id IS NULL, 'Leaf', 'Inner')) AS 'Type'
+FROM tree AS T1 LEFT JOIN tree AS T2 ON T1.id = T2.p_id;
+
+-- 未指定IF 和 SELECT条件时是这样的
++----+------+------+------+
+| id | p_id | id   | p_id |
++----+------+------+------+
+|  1 | NULL |    3 |    1 |
+|  1 | NULL |    2 |    1 |
+|  2 |    1 |    5 |    2 |
+|  2 |    1 |    4 |    2 |
+|  3 |    1 | NULL | NULL |
+|  4 |    2 | NULL | NULL |
+|  5 |    2 | NULL | NULL |
++----+------+------+------+
+```
+
+
+
+## 练习六：至少有五名直接下属的经理 （难度：中等）
+
+```
+Employee表包含所有员工及其上级的信息。每位员工都有一个Id，并且还有一个对应主管的Id（ManagerId）。
+
++------+----------+-----------+----------+
+|Id    |Name 	  |Department |ManagerId |
++------+----------+-----------+----------+
+|101   |John 	  |A 	      |null      |
+|102   |Dan 	  |A 	      |101       |
+|103   |James 	  |A 	      |101       |
+|104   |Amy 	  |A 	      |101       |
+|105   |Anne 	  |A 	      |101       |
+|106   |Ron 	  |B 	      |101       |
++------+----------+-----------+----------+
+针对Employee表，写一条SQL语句找出有5个下属的主管。对于上面的表，结果应输出：
+
++-------+
+| Name  |
++-------+
+| John  |
++-------+
+注意:
+
+没有人向自己汇报。
+```
+
+```mysql
+-- Answer: 
+CREATE TABLE employee(
+Id INTEGER NOT NULL,
+Name VARCHAR(10) NOT NULL,
+Department CHAR(1) NOT NULL,
+ManagerId INTEGER,
+PRIMARY KEY (Id)
+);
+
+INSERT INTO employee VALUES(101, 'John', 'A', NULL);
+INSERT INTO employee VALUES(102, 'Dan', 'A', 101);
+INSERT INTO employee VALUES(103, 'James', 'A', 101);
+INSERT INTO employee VALUES(104, 'Amy', 'A', 101);
+INSERT INTO employee VALUES(105, 'Anne', 'A', 101);
+INSERT INTO employee VALUES(106, 'Ron', 'B', 101);
+
+
+-- Solution1 利用IN + 子查询 + HAVING
+SELECT Name
+FROM employee
+WHERE Id IN (SELECT ManagerId
+             FROM employee
+             GROUP BY ManagerId
+             HAVING (COUNT(*) >= 5)  		
+			);
+
+-- Solution2 左连结 + HAVING
+SELECT E1.Name
+SELECT *
+FROM employee AS E1 LEFT JOIN employee AS E2 ON E1.Id = E2.ManagerId;
+GROUP BY E1.Name
+HAVING (COUNT(*) >= 5)  
+
+-- Solution3 先筛选+ 联合查询 + WHERE
+-- 可方便显示具体的个数
+SELECT E1.Name, E2.num
+FROM employee AS E1, 
+	(SELECT ManagerId, COUNT(Id) AS num
+     FROM employee 
+     GROUP BY ManagerId
+    ) AS E2
+WHERE E1.ID = E2.ManagerId AND E2.num >=5;
+
+-- 单纯E2的结果如下：
++-----------+-----------+
+| ManagerId | COUNT(Id) |
++-----------+-----------+
+|      NULL |         1 |
+|       101 |         5 |
++-----------+-----------+
+```
+
+
 
