@@ -792,7 +792,65 @@ Users 表存所有用户。每个用户有唯一键 Users_Id。Banned 表示这�
 +------------+-------------------+
 ```
 
-```
+```mysql
+-- Answer:
+CREATE TABLE Trips(
+Id INTEGER NOT NULL,
+Client_Id INTEGER,
+Driver_Id INTEGER,
+City_Id  INTEGER,
+Status VARCHAR(30),
+Request_at DATE,
+PRIMARY KEY(Id)    
+);
+
+INSERT INTO Trips VALUES(1, 1, 10, 1, 'completed', '2013-10-1');
+INSERT INTO Trips VALUES(2, 2, 11, 1, 'cancelled_by_driver', '2013-10-1');
+INSERT INTO Trips VALUES(3, 3, 12, 6, 'completed', '2013-10-1');
+INSERT INTO Trips VALUES(4, 4, 13, 6, 'cancelled_by_client', '2013-10-1');
+INSERT INTO Trips VALUES(5, 1, 10, 1, 'completed', '2013-10-2');
+INSERT INTO Trips VALUES(6, 2, 11, 6, 'completed', '2013-10-2');
+INSERT INTO Trips VALUES(7, 3, 12, 6, 'completed', '2013-10-2');
+INSERT INTO Trips VALUES(8, 2, 12, 12, 'completed', '2013-10-3');
+INSERT INTO Trips VALUES(9, 3, 10, 12, 'completed', '2013-10-3');
+INSERT INTO Trips VALUES(10, 4, 13, 12, 'cancelled_by_driver', '2013-10-3');
+
+
+CREATE TABLE Users(
+Users_Id INTEGER NOT NULL,
+Banned VARCHAR(5) NOT NULL,
+Role VARCHAR(10) NOT NULL,
+PRIMARY KEY(Users_Id)     
+);
+
+INSERT INTO Users VALUES(1,'No','client');
+INSERT INTO Users VALUES(2,'YES','client');
+INSERT INTO Users VALUES(3,'No','client');
+INSERT INTO Users VALUES(4,'No','client');
+INSERT INTO Users VALUES(10,'No','driver');
+INSERT INTO Users VALUES(11,'No','driver');
+INSERT INTO Users VALUES(12,'No','driver');
+INSERT INTO Users VALUES(13,'No','driver');
+
+-- 题目要求：
+-- 查出2013年10月1日至2013年10月3日期间
+-- 非禁止用户
+-- 的取消率。
+
+-- 首先按日期筛选
+-- 依次和client、driver进行连结
+-- 然后进行非banned的筛选
+-- 最后GROUP BY按天进行分组
+-- 计算取消率，可用CASE或者IF
+-- ROUND(SUM(CASE (Status != 'completed') THEN 1 ELSE 0 END))/COUNT(*), 2) AS 'Cancellation Rate'
+
+SELECT Request_at AS 'Day',
+		ROUND(SUM(IF(Status != 'completed', 1, 0)) / COUNT(*), 2) AS 'Cancellation Rate'
+FROM (SELECT * FROM Trips WHERE Request_at BETWEEN '2013-10-1' AND '2013-10-3') AS T INNER JOIN (SELECT * FROM Users WHERE ROLE='client') AS C ON T.Client_Id = C.Users_Id
+INNER JOIN (SELECT * FROM Users WHERE ROLE='driver') AS D ON T.Driver_Id = D.Users_Id
+WHERE C.Banned != 'Yes' AND D.Banned != 'Yes'
+GROUP BY Request_at;
+
 
 ```
 
