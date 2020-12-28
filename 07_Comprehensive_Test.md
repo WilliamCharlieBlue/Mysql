@@ -846,7 +846,8 @@ INSERT INTO Users VALUES(13,'No','driver');
 
 SELECT Request_at AS 'Day',
 		ROUND(SUM(IF(Status != 'completed', 1, 0)) / COUNT(*), 2) AS 'Cancellation Rate'
-FROM (SELECT * FROM Trips WHERE Request_at BETWEEN '2013-10-1' AND '2013-10-3') AS T INNER JOIN (SELECT * FROM Users WHERE ROLE='client') AS C ON T.Client_Id = C.Users_Id
+FROM (SELECT * FROM Trips WHERE Request_at BETWEEN '2013-10-1' AND '2013-10-3') AS T
+INNER JOIN (SELECT * FROM Users WHERE ROLE='client') AS C ON T.Client_Id = C.Users_Id
 INNER JOIN (SELECT * FROM Users WHERE ROLE='driver') AS D ON T.Driver_Id = D.Users_Id
 WHERE C.Banned != 'Yes' AND D.Banned != 'Yes'
 GROUP BY Request_at;
