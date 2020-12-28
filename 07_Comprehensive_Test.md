@@ -520,3 +520,205 @@ WHERE E1.ID = E2.ManagerId AND E2.num >=5;
 
 
 
+## 练习七: 分数排名 （难度：中等）
+
+```
+练习三的分数表，实现排名功能，但是排名需要是非连续的，如下：
+
++-------+------+
+| Score | Rank |
++-------+------+
+| 4.00  | 1    |
+| 4.00  | 1    |
+| 3.85  | 3    |
+| 3.65  | 4    |
+| 3.65  | 4    |
+| 3.50  | 6    |
++-------+------
+```
+
+```mysql
+-- Answer:
+-- 使用窗口专用函数DENSE_RANK(),重复值同序，非重复值连续
+-- 在OVER条件中，使用降序排列
+-- SELECT Score, DENSE_RANK() OVER (ORDER BY Score DESC) AS 'RANK'
+-- FROM score;
+
+-- 使用窗口专用函数RANK(),重复值同序且占位，非重复值不连续
+SELECT Score, RANK() OVER (ORDER BY Score DESC) AS 'RANK'
+FROM score;
+```
+
+
+
+## 练习八：查询回答率最高的问题 （难度：中等）
+
+```
+求出survey_log表中回答率最高的问题，表格的字段有：uid, action, question_id, answer_id, q_num, timestamp。
+
+uid是用户id；action的值为：“show”， “answer”， “skip”；当action是"answer"时，answer_id不为空，相反，当action是"show"和"skip"时为空（null）；q_num是问题的数字序号。
+
+写一条sql语句找出回答率最高的问题。
+
+举例：
+
+输入
+
+uid	action	question_id	answer_id	q_num	timestamp
+5	show	285	null	1	123
+5	answer	285	124124	1	124
+5	show	369	null	2	125
+5	skip	369	null	2	126
+输出
+
+survey_log
+285
+说明
+
+问题285的回答率为1/1，然而问题369的回答率是0/1，所以输出是285。
+
+**注意：**最高回答率的意思是：同一个问题出现的次数中回答的比例。
+```
+
+```mysql
+-- Answer:
+CREATE TABLE survey_log(
+uid INTEGER NOT NULL,
+action VARCHAR(10) NOT NULL,
+question_id INTEGER NOT NULL,
+answer_id INTEGER,
+q_num INTEGER NOT NULL, 
+timestamp INTEGER NOT NULL
+);
+
+INSERT INTO survey_log VALUES(5, 'show', 285, NULL, 1, 123);
+INSERT INTO survey_log VALUES(5, 'answer', 285, 124124, 1, 124);
+INSERT INTO survey_log VALUES(5, 'show', 369, NULL, 2, 125);
+INSERT INTO survey_log VALUES(5, 'skip', 369, NULL, 2, 126);
+
+-- 这个题目比较有意思，survey_log记录的到底是什么。
+-- 该表记录的是每个选手答题的流程：
+-- 题目出现（show）-回答（answer）/跳过（skip）
+-- 下一题出现（show）-回答（answer）/跳过（skip）
+-- 每个题目出现（show）以后，选手只能从回答（answer）或者跳过（skip）中选择一种对该题进行应对
+-- 要么回答（answer），要么跳过（skip）。回答或跳过以后，再进入下一题。
+
+-- show->出了几题；answer->答了几题
+
+-- Solution1 在子查询中进行计算筛选
+SELECT question_id AS 'survey_log'
+FROM(
+	SELECT question_id, 
+    	(SUM(CASE WHEN 'action' like 'answer' THEN 1 ELSE 0 END)/SUM(CASE WHEN 'action' like 'show' THEN 1 ELSE 0 END)       
+   		) AS rate
+    FROM survey_log
+    GROUP BY question_id
+    ORDER BY rate DESC
+    -- 这里只选择降序排列的第一个，即为回答率最高的
+    LIMIT 1
+) AS S;
+
+-- Solution2 先统计再计算
+SELECT question_id AS 'survey_log'
+FROM(
+    SELECT question_id,
+		SUM(CASE WHEN 'action' like 'answer' THEN 1 ELSE 0 END) AS num_answer,
+    	SUM(CASE WHEN 'action' like 'show' THEN 1 ELSE 0 END) AS num_show
+    FROM survey_log
+    GROUP BY question_id
+) AS S
+ORDER BY (num_answer/num_show) DESC
+LIMIT 1;
+
+-- Solution3 在排序中计算筛选，COUNT + IF
+SELECT question_id AS 'survey_log'
+FROM survey_log
+GROUP BY question_id
+ORDER BY COUNT(IF(action='answer', 1, 0))/COUNT(IF(action='show', 1, 0)) DESC
+-- 可直接统计answer_id,将忽略answer_id为NULL的行
+-- ORDER BY COUNT(answer_id))/COUNT(IF(action='show', 1, 0)) DESC
+LIMIT 1;
+
+```
+
+
+
+## 练习九：各部门前3高工资的员工（难度：中等
+
+```
+将项目7中的employee表清空，重新插入以下数据（其实是多插入5,6两行）：
+
++----+-------+--------+--------------+
+| Id | Name  | Salary | DepartmentId |
++----+-------+--------+--------------+
+| 1  | Joe   | 70000  | 1            |
+| 2  | Henry | 80000  | 2            |
+| 3  | Sam   | 60000  | 2            |
+| 4  | Max   | 90000  | 1            |
+| 5  | Janet | 69000  | 1            |
+| 6  | Randy | 85000  | 1            |
++----+-------+--------+--------------+
+编写一个 SQL 查询，找出每个部门工资前三高的员工。例如，根据上述给定的表格，查询结果应返回：
+
++------------+----------+--------+
+| Department | Employee | Salary |
++------------+----------+--------+
+| IT         | Max      | 90000  |
+| IT         | Randy    | 85000  |
+| IT         | Joe      | 70000  |
+| Sales      | Henry    | 80000  |
+| Sales      | Sam      | 60000  |
++------------+----------+--------+
+此外，请考虑实现各部门前N高工资的员工功能。
+```
+
+```mysql
+-- Answer:
+INSERT INTO Employee VALUES(5, 'Janet', 69000, 1);
+INSERT INTO Employee VALUES(6, 'Randy', 85000, 1);
+
+-- 使用窗口函数的PARTITION + ORDER DESC，获取各部门的倒序工资
+-- 只要按各部门的ranking筛选前几就可以了
+SELECT T.Department, T.Employee, T.Salary
+FROM (SELECT D.Name AS 'Department', E.Name AS 'Employee', E.Salary AS 'Salary',
+      RANK() OVER (PARTITION BY E.DepartmentId ORDER BY E.Salary DESC) AS ranking
+      FROM Employee AS E INNER JOIN Department AS D ON E.DepartmentId = D.Id
+) AS  T
+WHERE T.ranking <=3;
+-- 各部门前N高工资的员工功能
+-- WHERE T.ranking <=n
+
+```
+
+
+
+## 练习十：平面上最近距离 (难度: 困难
+
+```
+point_2d表包含一个平面内一些点（超过两个）的坐标值（x，y）。
+
+写一条查询语句求出这些点中的最短距离并保留2位小数。
+
+|x   | y  |
+|----|----|
+| -1 | -1 |
+|  0 |  0 |
+| -1 | -2 |
+最短距离是1，从点（-1，-1）到点（-1，-2）。所以输出结果为：
+
+| shortest |
+
+1.00
+
++--------+
+|shortest|
++--------+
+|1.00    |
++--------+
+注意： 所有点的最大距离小于10000。
+```
+
+```mysql
+
+```
+
